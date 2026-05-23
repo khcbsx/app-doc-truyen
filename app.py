@@ -97,7 +97,7 @@ if uploaded_file:
             if st.button("🔊 Nghe thử giọng (Test)"):
                 preview_text = "Xin chào, đây là câu nói thử nghiệm. Bạn thấy tốc độ và âm sắc thế nào?"
                 preview_txt_path = "preview_temp.txt"
-                preview_audio_path = "output/preview.mp3" # Bắt buộc xuất MP3
+                preview_audio_path = "output/preview.mp3"
                 
                 with open(preview_txt_path, "w", encoding="utf-8") as f: f.write(preview_text)
                 
@@ -106,18 +106,17 @@ if uploaded_file:
                         if voice_info["engine"] == "edge":
                             rate_pct = int((speed - 1.0) * 100)
                             rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-                            cmd = f'python -m edge_tts --voice {voice_info["id"]} --rate={rate_str} -f "{preview_txt_path}" --write-media "{preview_audio_path}"'
+                            # Sửa lại lệnh gọi trực tiếp edge-tts và bọc dấu ngoặc kép cho an toàn
+                            cmd = f'edge-tts --voice {voice_info["id"]} --rate="{rate_str}" -f "{preview_txt_path}" --write-media "{preview_audio_path}"'
                             subprocess.run(cmd, shell=True, check=True)
                         else:
                             piper_speed = 1.0 / speed
                             temp_wav = "output/temp_preview.wav"
-                            # 1. Tạo file Wav bằng Piper
                             cmd = f'piper --model "{voice_info["model_path"]}" --length_scale {piper_speed} --sentence_silence 0.2 --input_file "{preview_txt_path}" --output_file "{temp_wav}"'
                             subprocess.run(cmd, shell=True, check=True)
-                            # 2. Ép dung lượng bằng ffmpeg chuyển sang MP3
                             ffmpeg_cmd = f'ffmpeg -y -i "{temp_wav}" -b:a 64k "{preview_audio_path}"'
                             subprocess.run(ffmpeg_cmd, shell=True, check=True)
-                            os.remove(temp_wav) # Dọn dẹp rác
+                            os.remove(temp_wav)
                             
                     st.audio(preview_audio_path)
                 except Exception as e:
@@ -133,7 +132,7 @@ if uploaded_file:
             
             for idx, batch in enumerate(batches):
                 batch_name = f"Chuong_{start_index + (idx*batch_size) + 1}_den_{min(start_index + ((idx+1)*batch_size), end_index + 1)}"
-                output_file = os.path.join("output", f"{batch_name}.mp3") # Mọi file xuất ra đều là MP3
+                output_file = os.path.join("output", f"{batch_name}.mp3")
                 status_text.text(f"Đang xử lý gói {idx+1}/{len(batches)}...")
                 
                 full_batch_text = "".join([f"\n{ch}\n" + st.session_state.chapters[ch] for ch in batch])
@@ -144,7 +143,7 @@ if uploaded_file:
                     if voice_info["engine"] == "edge":
                         rate_pct = int((speed - 1.0) * 100)
                         rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-                        cmd = f'python -m edge_tts --voice {voice_info["id"]} --rate={rate_str} -f "{temp_txt}" --write-media "{output_file}"'
+                        cmd = f'edge-tts --voice {voice_info["id"]} --rate="{rate_str}" -f "{temp_txt}" --write-media "{output_file}"'
                         subprocess.run(cmd, shell=True, check=True)
                     else:
                         piper_speed = 1.0 / speed
@@ -152,10 +151,9 @@ if uploaded_file:
                         cmd = f'piper --model "{voice_info["model_path"]}" --length_scale {piper_speed} --sentence_silence 0.2 --input_file "{temp_txt}" --output_file "{temp_wav}"'
                         subprocess.run(cmd, shell=True, check=True)
                         
-                        # Gọi ffmpeg ép dẹp file WAV thành MP3 bitrate 64k
                         ffmpeg_cmd = f'ffmpeg -y -i "{temp_wav}" -b:a 64k "{output_file}"'
                         subprocess.run(ffmpeg_cmd, shell=True, check=True)
-                        os.remove(temp_wav) # Xóa file khổng lồ đi
+                        os.remove(temp_wav)
                         
                     st.audio(output_file)
                     st.success(f"✅ Xong (Đã nén MP3): {output_file}")
