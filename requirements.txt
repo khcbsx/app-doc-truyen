@@ -1,3 +1,4 @@
 streamlit
 python-docx
+piper-tts
 edge-tts
