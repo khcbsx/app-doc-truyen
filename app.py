@@ -6,37 +6,49 @@ import subprocess
 import urllib.request
 
 st.set_page_config(page_title="Word to Audio TTS", layout="wide")
-st.title("📚 Chuyển Đổi Truyện Chữ Sang Audio (Cloud)")
+st.title("📚 Chuyển Đổi Truyện Chữ Sang Audio (Đa Nền Tảng)")
 
 os.makedirs("models", exist_ok=True)
 os.makedirs("output", exist_ok=True)
 
 # ---------------------------------------------------------
-# KHO GIỌNG ĐỌC (Đã sửa link chuẩn 100%)
+# DANH SÁCH GIỌNG ĐỌC TỔNG HỢP (ONLINE & OFFLINE)
 # ---------------------------------------------------------
-voice_library = {
-    "Giong_Nu_Truyen_Cam": "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium",
-    "Giong_Nam_Tram_Am": "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vivos/mac_quoc_viet/low/vi_VN-vivos-mac_quoc_viet-low"
+VOICES = {
+    "🌟 Microsoft Hoài My (Online - Nữ Truyền Cảm)": {
+        "engine": "edge", "id": "vi-VN-HoaiMyNeural"
+    },
+    "🌟 Microsoft Nam Minh (Online - Nam Trầm Ấm)": {
+        "engine": "edge", "id": "vi-VN-NamMinhNeural"
+    },
+    "⚙️ Piper Vais1000 (Offline - Nữ Cơ Bản)": {
+        "engine": "piper", 
+        "base_url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium"
+    },
+    "⚙️ Piper Vivos (Offline - Nam Cơ Bản)": {
+        "engine": "piper", 
+        "base_url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vivos/x_low/vi_VN-vivos-x_low"
+    }
 }
 
-with st.spinner("⏳ Đang đồng bộ kho giọng nói (bạn đợi xíu nhé)..."):
-    for friendly_name, base_url in voice_library.items():
-        onnx_path = os.path.join("models", f"{friendly_name}.onnx")
-        json_path = os.path.join("models", f"{friendly_name}.onnx.json")
-        if not os.path.exists(onnx_path):
-            try:
-                urllib.request.urlretrieve(base_url + ".onnx", onnx_path)
-                urllib.request.urlretrieve(base_url + ".onnx.json", json_path)
-            except Exception as e:
-                st.error(f"Lỗi tải giọng {friendly_name}: {e}")
-# ---------------------------------------------------------
+# Tự động tải model offline nếu chưa có
+with st.spinner("⏳ Đang kiểm tra hệ thống giọng đọc..."):
+    for name, info in VOICES.items():
+        if info["engine"] == "piper":
+            safe_name = name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "")
+            onnx_path = os.path.join("models", f"{safe_name}.onnx")
+            json_path = os.path.join("models", f"{safe_name}.onnx.json")
+            info["model_path"] = onnx_path # Lưu đường dẫn để tí gọi
+            
+            if not os.path.exists(onnx_path):
+                try:
+                    urllib.request.urlretrieve(info["base_url"] + ".onnx", onnx_path)
+                    urllib.request.urlretrieve(info["base_url"] + ".onnx.json", json_path)
+                except Exception:
+                    pass
 
-available_models = [f for f in os.listdir("models") if f.endswith(".onnx")]
-
-if "chapters" not in st.session_state:
-    st.session_state.chapters = {}
-if "chapter_list" not in st.session_state:
-    st.session_state.chapter_list = []
+if "chapters" not in st.session_state: st.session_state.chapters = {}
+if "chapter_list" not in st.session_state: st.session_state.chapter_list = []
 
 uploaded_file = st.file_uploader("Tải lên file Word (.docx)", type=["docx"])
 
@@ -62,7 +74,7 @@ if uploaded_file:
             st.success(f"Đã tìm thấy {len(st.session_state.chapter_list)} chương!")
 
     if st.session_state.chapter_list:
-        # Bố cục giao diện được chia lại cho gọn gàng
+        st.markdown("---")
         col1, col2 = st.columns(2)
         with col1: start_ch = st.selectbox("Từ chương:", st.session_state.chapter_list, index=0)
         with col2: 
@@ -72,42 +84,78 @@ if uploaded_file:
         start_index, end_index = st.session_state.chapter_list.index(start_ch), st.session_state.chapter_list.index(end_ch)
         selected_run_chapters = st.session_state.chapter_list[start_index : end_index + 1]
         
+        st.markdown("---")
+        st.subheader("🗣️ Chọn giọng đọc & Tốc độ")
+        
         col3, col4 = st.columns(2)
-        with col3: batch_size = st.number_input("Gộp X chương/file (Ví dụ: 10):", min_value=1, max_value=100, value=1)
-        with col4: speed = st.slider("Tốc độ đọc (Càng LỚN càng CHẬM):", min_value=0.5, max_value=2.0, value=1.2, step=0.1)
-
-        if not available_models:
-            st.error("Chưa tải được giọng đọc nào.")
-        else:
-            selected_model_file = st.selectbox("Chọn giọng đọc:", available_models, format_func=lambda x: x.replace(".onnx", "").replace("_", " "))
-            model_path = os.path.join("models", selected_model_file)
+        with col3: 
+            selected_voice_name = st.selectbox("Danh sách giọng:", list(VOICES.keys()))
+            voice_info = VOICES[selected_voice_name]
+            batch_size = st.number_input("Gộp X chương/file (Ví dụ: 10):", min_value=1, max_value=100, value=1)
             
-            batches = [selected_run_chapters[i:i + batch_size] for i in range(0, len(selected_run_chapters), batch_size)]
+        with col4: 
+            # Đã chuẩn hóa thanh tốc độ cho dễ hiểu với cả 2 hệ thống
+            st.info("💡 Tốc độ: 1.0 là Chuẩn. Nhỏ hơn 1 là CHẬM, Lớn hơn 1 là NHANH.")
+            speed = st.slider("Điều chỉnh tốc độ:", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
             
-            if st.button("🚀 Bắt Đầu Chuyển Thể", type="primary"):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+            st.write("")
+            if st.button("🔊 Nghe thử giọng (Test)"):
+                preview_text = "Xin chào, đây là câu nói thử nghiệm. Đạo hữu thấy tốc độ và âm sắc thế nào, đã vừa tai chưa?"
+                preview_txt_path = "preview_temp.txt"
+                ext = "mp3" if voice_info["engine"] == "edge" else "wav"
+                preview_audio_path = f"output/preview.{ext}"
                 
-                for idx, batch in enumerate(batches):
-                    batch_name = f"Chuong_{start_index + (idx*batch_size) + 1}_den_{min(start_index + ((idx+1)*batch_size), end_index + 1)}"
-                    output_file = os.path.join("output", f"{batch_name}.wav")
-                    status_text.text(f"Đang xử lý gói {idx+1}/{len(batches)}...")
-                    
-                    full_batch_text = "".join([f"\n{ch}\n" + st.session_state.chapters[ch] for ch in batch])
-                    temp_txt = "temp_batch.txt"
-                    with open(temp_txt, "w", encoding="utf-8") as f: f.write(full_batch_text)
-                    
-                    # Lệnh đã được thêm "--length_scale" để chỉnh tốc độ và "--sentence_silence" để ngắt nghỉ giữa các câu
-                    command = f'piper --model "{model_path}" --length_scale {speed} --sentence_silence 0.2 --input_file "{temp_txt}" --output_file "{output_file}"'
-                    
-                    try:
-                        subprocess.run(command, shell=True, check=True)
-                        st.audio(output_file, format="audio/wav")
-                        st.success(f"✅ Xong: {output_file}")
-                    except Exception as e:
-                        st.error(f"Lỗi: {e}")
-                    finally:
-                        if os.path.exists(temp_txt): os.remove(temp_txt)
+                with open(preview_txt_path, "w", encoding="utf-8") as f: f.write(preview_text)
+                
+                try:
+                    with st.spinner("Đang tạo âm thanh mẫu..."):
+                        if voice_info["engine"] == "edge":
+                            rate_pct = int((speed - 1.0) * 100)
+                            rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
+                            cmd = f'python -m edge_tts --voice {voice_info["id"]} --rate={rate_str} -f "{preview_txt_path}" --write-media "{preview_audio_path}"'
+                        else: # piper
+                            piper_speed = 1.0 / speed # Đảo ngược toán học để chuẩn hóa slider
+                            cmd = f'piper --model "{voice_info["model_path"]}" --length_scale {piper_speed} --sentence_silence 0.2 --input_file "{preview_txt_path}" --output_file "{preview_audio_path}"'
                             
-                    progress_bar.progress((idx + 1) / len(batches))
-                status_text.text("🎉 Hoàn thành toàn bộ!")
+                        subprocess.run(cmd, shell=True, check=True)
+                    st.audio(preview_audio_path)
+                except Exception as e:
+                    st.error(f"Lỗi khi nghe thử: {e}")
+                finally:
+                    if os.path.exists(preview_txt_path): os.remove(preview_txt_path)
+        
+        st.markdown("---")
+        if st.button("🚀 Bắt Đầu Chuyển Thể Toàn Bộ", type="primary", use_container_width=True):
+            batches = [selected_run_chapters[i:i + batch_size] for i in range(0, len(selected_run_chapters), batch_size)]
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for idx, batch in enumerate(batches):
+                ext = "mp3" if voice_info["engine"] == "edge" else "wav"
+                batch_name = f"Chuong_{start_index + (idx*batch_size) + 1}_den_{min(start_index + ((idx+1)*batch_size), end_index + 1)}"
+                output_file = os.path.join("output", f"{batch_name}.{ext}")
+                status_text.text(f"Đang xử lý gói {idx+1}/{len(batches)}...")
+                
+                full_batch_text = "".join([f"\n{ch}\n" + st.session_state.chapters[ch] for ch in batch])
+                temp_txt = "temp_batch.txt"
+                with open(temp_txt, "w", encoding="utf-8") as f: f.write(full_batch_text)
+                
+                if voice_info["engine"] == "edge":
+                    rate_pct = int((speed - 1.0) * 100)
+                    rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
+                    cmd = f'python -m edge_tts --voice {voice_info["id"]} --rate={rate_str} -f "{temp_txt}" --write-media "{output_file}"'
+                else: # piper
+                    piper_speed = 1.0 / speed
+                    cmd = f'piper --model "{voice_info["model_path"]}" --length_scale {piper_speed} --sentence_silence 0.2 --input_file "{temp_txt}" --output_file "{output_file}"'
+                
+                try:
+                    subprocess.run(cmd, shell=True, check=True)
+                    st.audio(output_file)
+                    st.success(f"✅ Xong: {output_file}")
+                except Exception as e:
+                    st.error(f"Lỗi: {e}")
+                finally:
+                    if os.path.exists(temp_txt): os.remove(temp_txt)
+                        
+                progress_bar.progress((idx + 1) / len(batches))
+            status_text.text("🎉 Hoàn thành toàn bộ!")
