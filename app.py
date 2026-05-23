@@ -28,6 +28,17 @@ VOICES = {
     }
 }
 
+# ---------------------------------------------------------
+# TÍNH NĂNG MỚI: BỘ LỌC DỌN RÁC VĂN BẢN (CHỐNG TREO MÁY)
+# ---------------------------------------------------------
+def clean_text_for_tts(text):
+    # Loại bỏ các ký tự đặc biệt, chỉ giữ lại chữ cái, số, và dấu câu cơ bản
+    cleaned = re.sub(r'[^\w\s.,!?"\'-]', ' ', text)
+    cleaned = cleaned.replace('_', ' ') # Xóa triệt để dấu gạch dưới hay gây lỗi cho Piper
+    cleaned = re.sub(r'\s+', ' ', cleaned) # Thu gọn các khoảng trắng thừa
+    return cleaned.strip()
+# ---------------------------------------------------------
+
 with st.spinner("⏳ Đang kiểm tra hệ thống giọng đọc..."):
     for name, info in VOICES.items():
         if info["engine"] == "piper":
@@ -106,7 +117,6 @@ if uploaded_file:
                         if voice_info["engine"] == "edge":
                             rate_pct = int((speed - 1.0) * 100)
                             rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-                            # Sửa lại lệnh gọi trực tiếp edge-tts và bọc dấu ngoặc kép cho an toàn
                             cmd = f'edge-tts --voice {voice_info["id"]} --rate="{rate_str}" -f "{preview_txt_path}" --write-media "{preview_audio_path}"'
                             subprocess.run(cmd, shell=True, check=True)
                         else:
@@ -133,11 +143,14 @@ if uploaded_file:
             for idx, batch in enumerate(batches):
                 batch_name = f"Chuong_{start_index + (idx*batch_size) + 1}_den_{min(start_index + ((idx+1)*batch_size), end_index + 1)}"
                 output_file = os.path.join("output", f"{batch_name}.mp3")
-                status_text.text(f"Đang xử lý gói {idx+1}/{len(batches)}...")
+                status_text.text(f"Đang xử lý gói {idx+1}/{len(batches)}... (Xin vui lòng chờ, có thể mất vài phút)")
                 
-                full_batch_text = "".join([f"\n{ch}\n" + st.session_state.chapters[ch] for ch in batch])
+                # Nối văn bản và DỌN RÁC trước khi lưu vào file text tạm
+                raw_text = "".join([f"\n{ch}\n" + st.session_state.chapters[ch] for ch in batch])
+                clean_text = clean_text_for_tts(raw_text)
+                
                 temp_txt = "temp_batch.txt"
-                with open(temp_txt, "w", encoding="utf-8") as f: f.write(full_batch_text)
+                with open(temp_txt, "w", encoding="utf-8") as f: f.write(clean_text)
                 
                 try:
                     if voice_info["engine"] == "edge":
@@ -158,9 +171,9 @@ if uploaded_file:
                     st.audio(output_file)
                     st.success(f"✅ Xong (Đã nén MP3): {output_file}")
                 except Exception as e:
-                    st.error(f"Lỗi: {e}")
+                    st.error(f"Lỗi hệ thống: {e}")
                 finally:
                     if os.path.exists(temp_txt): os.remove(temp_txt)
                         
                 progress_bar.progress((idx + 1) / len(batches))
-            status_text.text("🎉 Hoàn thành! File bây giờ cực kỳ nhẹ.")
+            status_text.text("🎉 Hoàn thành! File bây giờ cực kỳ nhẹ và sạch.")
