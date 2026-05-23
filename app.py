@@ -3,12 +3,30 @@ import docx
 import re
 import os
 import subprocess
+import urllib.request  # Thư viện bắt buộc phải có để tải file từ mạng
 
 st.set_page_config(page_title="Word to Audio TTS", layout="wide")
 st.title("📚 Chuyển Đổi Truyện Chữ Sang Audio (Cloud)")
 
 os.makedirs("models", exist_ok=True)
 os.makedirs("output", exist_ok=True)
+
+# ---------------------------------------------------------
+# TÍNH NĂNG TỰ ĐỘNG TẢI FILE 61MB TỪ HUGGING FACE
+# ---------------------------------------------------------
+onnx_url = "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx"
+json_url = "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium.onnx.json"
+
+onnx_path = "models/vi_VN-vais1000-medium.onnx"
+json_path = "models/vi_VN-vais1000-medium.onnx.json"
+
+# Kiểm tra nếu chưa có file thì máy chủ sẽ tự động tải về
+if not os.path.exists(onnx_path):
+    with st.spinner("⏳ Máy chủ đang tự động tải bộ giọng nói Tiếng Việt (61MB) từ Hugging Face... Bạn đợi chút nhé!"):
+        urllib.request.urlretrieve(onnx_url, onnx_path)
+        urllib.request.urlretrieve(json_url, json_path)
+# ---------------------------------------------------------
+
 available_models = [f for f in os.listdir("models") if f.endswith(".onnx")]
 
 if "chapters" not in st.session_state:
